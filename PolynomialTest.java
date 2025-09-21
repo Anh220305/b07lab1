@@ -1,7 +1,5 @@
 public class PolynomialTest {
     public static void main(String[] args) {
-        // Test the example polynomial: 6 - 2x + 5x^3
-        // Represented as [6, -2, 0, 5]
         double[] coeffs1 = {6, -2, 0, 5};
         Polynomial p1 = new Polynomial(coeffs1);
         
@@ -10,15 +8,13 @@ public class PolynomialTest {
         System.out.println("Is x = -1 a root? " + p1.hasRoot(-1));
         System.out.println();
         
-        // Test no-argument constructor
         Polynomial p2 = new Polynomial();
         System.out.println("Zero polynomial: " + p2);
         System.out.println("Evaluating zero polynomial at x = 5: " + p2.evaluate(5));
         System.out.println("Is x = 5 a root of zero polynomial? " + p2.hasRoot(5));
         System.out.println();
         
-        // Test polynomial addition
-        double[] coeffs2 = {1, 3, 2}; // 1 + 3x + 2x^2
+        double[] coeffs2 = {1, 3, 2}; 
         Polynomial p3 = new Polynomial(coeffs2);
         System.out.println("Polynomial 2: " + p3);
         
@@ -26,9 +22,7 @@ public class PolynomialTest {
         System.out.println("Sum of polynomials: " + sum);
         System.out.println();
         
-        // Test with a polynomial that has a known root
-        // x^2 - 4 = 0 has roots at x = 2 and x = -2
-        double[] coeffs3 = {-4, 0, 1}; // -4 + 0x + 1x^2 = x^2 - 4
+        double[] coeffs3 = {-4, 0, 1};
         Polynomial p4 = new Polynomial(coeffs3);
         System.out.println("Polynomial 3: " + p4);
         System.out.println("Evaluating at x = 2: " + p4.evaluate(2));
