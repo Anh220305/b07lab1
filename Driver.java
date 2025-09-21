@@ -1,4 +1,4 @@
-// Fall 2025 CS Lab 1 
+// Fall 2025 B07 Lab 1 
 public class Driver {
 public static void main(String [] args) {
 Polynomial p = new Polynomial();
