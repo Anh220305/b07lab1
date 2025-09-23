@@ -37,6 +37,7 @@ public class Polynomial {
         consolidateInPlace();
     }
 
+    //coeffs short for coefficients, exp = exponents 
     private Polynomial(double[] coeffs, int[] exps, int len) {
         this.coefficients = new double[len];
         this.exponents = new int[len];
