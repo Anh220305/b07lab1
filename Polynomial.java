@@ -3,90 +3,146 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 public class Polynomial {
     private double[] coefficients; 
-    private int[] exponents;       
+    private int[] exponents;     
 
     public Polynomial() {
         this.coefficients = new double[]{0.0};
         this.exponents = new int[]{0};
     }
 
-    public Polynomial(double[] denseCoefficients) {
-        List<Double> coeffList = new ArrayList<>();
-        List<Integer> expList = new ArrayList<>();
-        for (int i = 0; i < denseCoefficients.length; i++) {
-            if (denseCoefficients[i] != 0.0) {
-                coeffList.add(denseCoefficients[i]);
-                expList.add(i);
-            }
+    public Polynomial(double[] dense) {
+        int count = 0;
+        for (int i = 0; i < dense.length; i++) {
+            if (dense[i] != 0.0) count++;
         }
-        if (coeffList.isEmpty()) {
+        if (count == 0) {
             this.coefficients = new double[]{0.0};
             this.exponents = new int[]{0};
-        } else {
-            this.coefficients = new double[coeffList.size()];
-            this.exponents = new int[expList.size()];
-            for (int i = 0; i < coeffList.size(); i++) {
-                this.coefficients[i] = coeffList.get(i);
-                this.exponents[i] = expList.get(i);
-            }
-            sortByExponent();
+            return;
         }
+        this.coefficients = new double[count];
+        this.exponents = new int[count];
+        int idx = 0;
+        for (int i = 0; i < dense.length; i++) {
+            if (dense[i] != 0.0) {
+                this.coefficients[idx] = dense[i];
+                this.exponents[idx] = i;
+                idx++;
+            }
+        }
+        sortByExponent();
+        consolidateInPlace();
     }
 
-    private Polynomial(double[] coefficients, int[] exponents) {
-        // Assume inputs are already consolidated by caller
-        this.coefficients = Arrays.copyOf(coefficients, coefficients.length);
-        this.exponents = Arrays.copyOf(exponents, exponents.length);
+    private Polynomial(double[] coeffs, int[] exps, int len) {
+        this.coefficients = new double[len];
+        this.exponents = new int[len];
+        for (int i = 0; i < len; i++) {
+            this.coefficients[i] = coeffs[i];
+            this.exponents[i] = exps[i];
+        }
         sortByExponent();
+        consolidateInPlace();
     }
 
     public Polynomial(File file) throws IOException {
-        try (BufferedReader br = new BufferedReader(new FileReader(file))) {
-            String line = br.readLine();
-            if (line == null || line.trim().isEmpty()) {
-                this.coefficients = new double[]{0.0};
-                this.exponents = new int[]{0};
-                return;
-            }
-            parseFromCompactString(line.trim());
+        String line = null;
+        BufferedReader br = new BufferedReader(new FileReader(file));
+        try {
+            line = br.readLine();
+        } finally {
+            br.close();
         }
+        if (line == null || line.length() == 0) {
+            this.coefficients = new double[]{0.0};
+            this.exponents = new int[]{0};
+            return;
+        }
+        parseCompact(line.trim());
+        sortByExponent();
+        consolidateInPlace();
     }
 
     public Polynomial add(Polynomial other) {
-        Map<Integer, Double> expToCoeff = new HashMap<>();
-        for (int i = 0; i < this.coefficients.length; i++) {
-            expToCoeff.merge(this.exponents[i], this.coefficients[i], Double::sum);
+        int n = this.coefficients.length;
+        int m = other.coefficients.length;
+        double[] c = new double[n + m];
+        int[] e = new int[n + m];
+        int i = 0, j = 0, k = 0;
+        while (i < n && j < m) {
+            if (this.exponents[i] == other.exponents[j]) {
+                double sum = this.coefficients[i] + other.coefficients[j];
+                if (sum != 0.0) {
+                    c[k] = sum;
+                    e[k] = this.exponents[i];
+                    k++;
+                }
+                i++; j++;
+            } else if (this.exponents[i] < other.exponents[j]) {
+                c[k] = this.coefficients[i];
+                e[k] = this.exponents[i];
+                i++; k++;
+            } else {
+                c[k] = other.coefficients[j];
+                e[k] = other.exponents[j];
+                j++; k++;
+            }
         }
-        for (int i = 0; i < other.coefficients.length; i++) {
-            expToCoeff.merge(other.exponents[i], other.coefficients[i], Double::sum);
-        }
-        return fromExponentMap(expToCoeff);
+        while (i < n) { c[k] = this.coefficients[i]; e[k] = this.exponents[i]; i++; k++; }
+        while (j < m) { c[k] = other.coefficients[j]; e[k] = other.exponents[j]; j++; k++; }
+        return new Polynomial(c, e, k);
     }
 
     public Polynomial multiply(Polynomial other) {
-        Map<Integer, Double> expToCoeff = new HashMap<>();
-        for (int i = 0; i < this.coefficients.length; i++) {
-            for (int j = 0; j < other.coefficients.length; j++) {
-                int exp = this.exponents[i] + other.exponents[j];
-                double coeff = this.coefficients[i] * other.coefficients[j];
-                expToCoeff.merge(exp, coeff, Double::sum);
+        int n = this.coefficients.length;
+        int m = other.coefficients.length;
+        double[] tempC = new double[n * m];
+        int[] tempE = new int[n * m];
+        int t = 0;
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < m; j++) {
+                tempC[t] = this.coefficients[i] * other.coefficients[j];
+                tempE[t] = this.exponents[i] + other.exponents[j];
+                t++;
             }
         }
-        return fromExponentMap(expToCoeff);
+        for (int a = 0; a < t; a++) {
+            int minPos = a;
+            for (int b = a + 1; b < t; b++) {
+                if (tempE[b] < tempE[minPos]) minPos = b;
+            }
+            if (minPos != a) {
+                int te = tempE[a]; tempE[a] = tempE[minPos]; tempE[minPos] = te;
+                double tc = tempC[a]; tempC[a] = tempC[minPos]; tempC[minPos] = tc;
+            }
+        }
+        double[] c = new double[t];
+        int[] e = new int[t];
+        int k = 0;
+        int idx = 0;
+        while (idx < t) {
+            int exp = tempE[idx];
+            double sum = 0.0;
+            while (idx < t && tempE[idx] == exp) {
+                sum += tempC[idx];
+                idx++;
+            }
+            if (sum != 0.0) {
+                c[k] = sum;
+                e[k] = exp;
+                k++;
+            }
+        }
+        return new Polynomial(c, e, k);
     }
 
     public double evaluate(double x) {
         double result = 0.0;
-        for (int i = 0; i < coefficients.length; i++) {
-            result += coefficients[i] * Math.pow(x, exponents[i]);
+        for (int i2 = 0; i2 < coefficients.length; i2++) {
+            result += coefficients[i2] * Math.pow(x, exponents[i2]);
         }
         return result;
     }
@@ -96,149 +152,159 @@ public class Polynomial {
     }
 
     public void saveToFile(String fileName) throws IOException {
-        try (PrintWriter pw = new PrintWriter(fileName)) {
+        PrintWriter pw = new PrintWriter(fileName);
+        try {
             pw.print(toCompactString());
+        } finally {
+            pw.close();
         }
-    }
-
-    private void consolidateLikeTerms() {
-        Map<Integer, Double> expToCoeff = new HashMap<>();
-        for (int i = 0; i < coefficients.length; i++) {
-            if (coefficients[i] != 0.0) {
-                expToCoeff.merge(exponents[i], coefficients[i], Double::sum);
-            }
-        }
-        Polynomial normalized = fromExponentMap(expToCoeff);
-        this.coefficients = normalized.coefficients;
-        this.exponents = normalized.exponents;
     }
 
     private void sortByExponent() {
         for (int i = 1; i < exponents.length; i++) {
-            int keyExp = exponents[i];
-            double keyCoeff = coefficients[i];
+            int keyE = exponents[i];
+            double keyC = coefficients[i];
             int j = i - 1;
-            while (j >= 0 && exponents[j] > keyExp) {
+            while (j >= 0 && exponents[j] > keyE) {
                 exponents[j + 1] = exponents[j];
                 coefficients[j + 1] = coefficients[j];
                 j--;
             }
-            exponents[j + 1] = keyExp;
-            coefficients[j + 1] = keyCoeff;
+            exponents[j + 1] = keyE;
+            coefficients[j + 1] = keyC;
         }
     }
 
-    private Polynomial fromExponentMap(Map<Integer, Double> expToCoeff) {
-        if (expToCoeff.isEmpty()) {
-            return new Polynomial();
-        }
-        List<Integer> exps = new ArrayList<>();
-        List<Double> coeffs = new ArrayList<>();
-        for (Map.Entry<Integer, Double> e : expToCoeff.entrySet()) {
-            double c = e.getValue();
-            if (Math.abs(c) >= 1e-12) {
-                exps.add(e.getKey());
-                coeffs.add(c);
+    private void consolidateInPlace() {
+        if (coefficients.length == 0) return;
+        int n = coefficients.length;
+        double[] c = new double[n];
+        int[] e = new int[n];
+        int k = 0;
+        int i = 0;
+        while (i < n) {
+            int exp = exponents[i];
+            double sum = 0.0;
+            while (i < n && exponents[i] == exp) {
+                sum += coefficients[i];
+                i++;
+            }
+            if (sum != 0.0) {
+                c[k] = sum;
+                e[k] = exp;
+                k++;
             }
         }
-        if (coeffs.isEmpty()) {
-            return new Polynomial();
+        if (k == 0) {
+            this.coefficients = new double[]{0.0};
+            this.exponents = new int[]{0};
+        } else {
+            double[] nc = new double[k];
+            int[] ne = new int[k];
+            for (int t = 0; t < k; t++) { nc[t] = c[t]; ne[t] = e[t]; }
+            this.coefficients = nc;
+            this.exponents = ne;
         }
-        int n = coeffs.size();
-        double[] cArr = new double[n];
-        int[] eArr = new int[n];
-        for (int i = 0; i < n; i++) {
-            cArr[i] = coeffs.get(i);
-            eArr[i] = exps.get(i);
-        }
-        Polynomial p = new Polynomial(cArr, eArr);
-        p.sortByExponent();
-        return p;
     }
 
-    private void parseFromCompactString(String s) {
-        if (s.isEmpty()) {
+    private void parseCompact(String s) {
+        int capacity = s.length();
+        double[] tmpC = new double[capacity];
+        int[] tmpE = new int[capacity];
+        int count = 0;
+        int i = 0;
+        while (i < s.length()) {
+            int sign = 1;
+            char ch = s.charAt(i);
+            if (ch == '+') { sign = 1; i++; }
+            else if (ch == '-') { sign = -1; i++; }
+            double coeff = 0.0;
+            boolean coeffSpecified = false;
+            int start = i;
+            while (i < s.length()) {
+                char c = s.charAt(i);
+                if ((c >= '0' && c <= '9') || c == '.') i++; else break;
+            }
+            if (i > start) {
+                coeff = parseDoubleSimple(s.substring(start, i));
+                coeffSpecified = true;
+            }
+            int exp = 0;
+            if (i < s.length() && s.charAt(i) == 'x') {
+                i++;
+                if (!coeffSpecified) coeff = 1.0;
+                if (i < s.length() && s.charAt(i) >= '0' && s.charAt(i) <= '9') {
+                    int estart = i;
+                    while (i < s.length() && s.charAt(i) >= '0' && s.charAt(i) <= '9') i++;
+                    exp = parseIntSimple(s.substring(estart, i));
+                } else {
+                    exp = 1;
+                }
+            } else {
+                if (!coeffSpecified) coeff = 0.0;
+                exp = 0;
+            }
+            tmpC[count] = sign * coeff;
+            tmpE[count] = exp;
+            count++;
+        }
+        if (count == 0) {
             this.coefficients = new double[]{0.0};
             this.exponents = new int[]{0};
             return;
         }
-        String normalized = s;
-        if (normalized.charAt(0) != '-') {
-            normalized = "+" + normalized;
+        double[] c = new double[count];
+        int[] e = new int[count];
+        for (int t = 0; t < count; t++) { c[t] = tmpC[t]; e[t] = tmpE[t]; }
+        this.coefficients = c;
+        this.exponents = e;
+    }
+
+    private static int parseIntSimple(String s) {
+        int val = 0;
+        for (int i = 0; i < s.length(); i++) {
+            val = val * 10 + (s.charAt(i) - '0');
         }
-        normalized = normalized.replace("-", "+-");
-        String[] parts = normalized.split("\\+");
-        List<Double> coeffs = new ArrayList<>();
-        List<Integer> exps = new ArrayList<>();
-        for (String part : parts) {
-            if (part == null || part.isEmpty()) continue;
-            String token = part;
-            double coeff;
-            int exp;
-            int xIndex = token.indexOf('x');
-            if (xIndex == -1) {
-                coeff = Double.parseDouble(token);
-                exp = 0;
-            } else {
-                String coeffStr = token.substring(0, xIndex);
-                if (coeffStr.isEmpty() || coeffStr.equals("+")) {
-                    coeff = 1.0;
-                } else if (coeffStr.equals("-")) {
-                    coeff = -1.0;
-                } else {
-                    coeff = Double.parseDouble(coeffStr);
-                }
-                String expStr = token.substring(xIndex + 1);
-                if (expStr.isEmpty()) {
-                    exp = 1; 
-                } else {
-                    exp = Integer.parseInt(expStr);
-                }
+        return val;
+    }
+
+    private static double parseDoubleSimple(String s) {
+        double val = 0.0;
+        double frac = 0.0;
+        double base = 1.0;
+        int i = 0;
+        while (i < s.length() && s.charAt(i) != '.') {
+            val = val * 10 + (s.charAt(i) - '0');
+            i++;
+        }
+        if (i < s.length() && s.charAt(i) == '.') {
+            i++;
+            while (i < s.length()) {
+                base /= 10.0;
+                frac += (s.charAt(i) - '0') * base;
+                i++;
             }
-            coeffs.add(coeff);
-            exps.add(exp);
         }
-        if (coeffs.isEmpty()) {
-            this.coefficients = new double[]{0.0};
-            this.exponents = new int[]{0};
-        } else {
-            this.coefficients = new double[coeffs.size()];
-            this.exponents = new int[exps.size()];
-            for (int i = 0; i < coeffs.size(); i++) {
-                this.coefficients[i] = coeffs.get(i);
-                this.exponents[i] = exps.get(i);
-            }
-            consolidateLikeTerms();
-            sortByExponent();
-        }
+        return val + frac;
     }
 
     private String toCompactString() {
-        sortByExponent();
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < coefficients.length; i++) {
             double c = coefficients[i];
             int e = exponents[i];
-            if (Math.abs(c) < 1e-12) continue;
+            if (c == 0.0) continue;
             String sign = c >= 0 ? "+" : "-";
-            double abs = Math.abs(c);
+            double abs = c >= 0 ? c : -c;
             if (e == 0) {
                 sb.append(sign).append(abs);
             } else {
-                if (abs == 1.0) {
-                    sb.append(sign).append("x");
-                } else {
-                    sb.append(sign).append(abs).append("x");
-                }
-                if (e != 1) {
-                    sb.append(e);
-                }
+                if (abs == 1.0) sb.append(sign).append("x");
+                else sb.append(sign).append(abs).append("x");
+                if (e != 1) sb.append(e);
             }
         }
         if (sb.length() == 0) return "0";
-        if (sb.charAt(0) == '+') {
-            return sb.substring(1);
-        }
-        return sb.toString();
+        return sb.charAt(0) == '+' ? sb.substring(1) : sb.toString();
     }
 }
